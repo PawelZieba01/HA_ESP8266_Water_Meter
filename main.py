@@ -1,11 +1,13 @@
 from ESP_uNetwork import ESP_uNetwork
 from ESP_MyMQTT import ESP_MyMQTT
-from machine import Pin, Timer
+from machine import Pin, Timer, reset
+from time import sleep
 import btree
 
 # Tematy mqtt
 topic_availability = "home/water/availability"
-topic_state = "home/water/state"
+topic_state = "home/water/sum_value"
+topic_last_value = "home/water/last_value"
 
 # Konfiguracja pinów
 led = Pin(2, Pin.OUT)
@@ -28,6 +30,13 @@ Water_meter = ESP_MyMQTT("config.json")
 Water_meter.connect_and_subscribe()
 Water_meter.send_state(topic_availability, "online")
 
+
+# Funkcja resetująca ESP, po rozłączeniu z siecią
+def check_connection():
+    if(not myNet.check_connection_with_AP()):
+        print("Utracono połączenie z siecią. Restart za 3 sekundy.")
+        sleep(3)
+        reset()
 
 # Funkcja odczytująca dane zapisane lokalnie
 def get_data_local(id):
@@ -52,10 +61,13 @@ def save_data_local(id, data):
     f.close()
 
 
-def save_data_remote(data):
-    print("Zapisuje do zdalnej bazy danych...")
-    Water_meter.send_state(topic_availability, "online")
-    Water_meter.send_state(topic_state, bytes(str(data), 'utf-8'))
+def save_data_remote(topic, data):
+    if (myNet.check_connection_with_AP()):
+        print("Zapisuje do zdalnej bazy danych...")
+        Water_meter.send_state(topic_availability, "online")
+        Water_meter.send_state(topic, bytes(str(data), 'utf-8'))
+    else:
+        print("Błąd połączenia z siecią")
 
 
 # Funkcja zliczająca impulsy kontaktronu (eliminacja drgań styków)
@@ -76,7 +88,8 @@ def timer_callback(timer):
     led.value(0)
 
     save_data_local("value_sum", sum)
-    save_data_remote(sum)
+    save_data_remote(topic_state, sum)
+    save_data_remote(topic_last_value, counter)
 
     print("counter")
     print(counter)
@@ -97,6 +110,7 @@ led.value(1)                # Led off when ready
 
 while True:
     check_count_pin()
+    check_connection()
 
 
 
